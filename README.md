@@ -10,3 +10,15 @@ IMPORTANT NOTE: AI assistance WAS USED to help guide the project. THIS PROJECT I
 
 To make, do `make` in the ZNU directory.
 To run in QEMU, do `make run` (in the ZNU directory).
+
+Latest important update:
+* Alphabet added
+* Use `printk()` in the kernel to use it
+* When you boot into it, if you had the `drivers/keyboards/keyboard` usabled, it will allow you to type.
+
+# To-Do:
+* Add a shell
+  This will make it so you can boot into it and make/edit some files, but to do that we of
+  course need:
+* Filesystem
+  Self explanatory, will likely use Fat32.
