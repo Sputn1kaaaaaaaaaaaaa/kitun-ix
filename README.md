@@ -5,4 +5,4 @@ It uses the ZNU kernel (a kernel made by myself) to run. Most things are handled
 
 IMPORTANT NOTE: AI assistance WAS USED to help guide the project. THIS PROJECT IS NOT VIBECODED.
 
-Also, unfinished.
+* Is now bootable (without shell)
