@@ -1,5 +1,5 @@
 menu "drivers"
 
-comment "No options in this menu yet"
+source "drivers/keyboard/Kconfig"
 
 endmenu

@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""Nothing here yet.
-"""
+"""Terminal menu for ZNU, laid out like Linux menuconfig."""
 
 import curses
 import os
@@ -12,8 +11,8 @@ CONFIG_PATH = ROOT / ".config"
 
 INSTRUCTIONS = (
     "Arrow keys navigate the menu. <Enter> selects submenus --->. "
-    "Press <Esc> to go back or exit, <?> for Help, </> for Search. "
-    "These menus only organize the tree; no options are defined yet."
+    "<Space> toggles [X] (do) and [ ] (don't). "
+    "Press <Esc> to go back or exit, <?> for Help, </> for Search."
 )
 
 
@@ -31,6 +30,7 @@ class Menu:
         self.title = title
         self.parent = None
         self.children = []
+        self.enabled = True
 
     def path(self):
         parts = []
@@ -102,13 +102,59 @@ def load_kconfig(path):
     return root
 
 
-def write_config(mainmenu):
-    CONFIG_PATH.write_text(
-        "#\n"
-        "# Automatically generated file; DO NOT EDIT.\n"
-        f"# {mainmenu}\n"
-        "#\n"
-    )
+def _walk_menus(menu):
+    for child in menu.children:
+        if isinstance(child, Menu):
+            yield child
+            yield from _walk_menus(child)
+
+
+def _symbol(menu):
+    name = menu.path().strip("/").replace("/", "_").upper()
+    return "CONFIG_" + name
+
+
+def _enabled(menu):
+    node = menu
+    while node.parent is not None:
+        if not node.enabled:
+            return False
+        node = node.parent
+    return True
+
+
+def write_config(root):
+    lines = [
+        "#\n",
+        "# Automatically generated file; DO NOT EDIT.\n",
+        f"# {root.title}\n",
+        "#\n",
+    ]
+    for menu in _walk_menus(root):
+        symbol = _symbol(menu)
+        if _enabled(menu):
+            lines.append(f"{symbol}=y\n")
+        else:
+            lines.append(f"# {symbol} is not set\n")
+    CONFIG_PATH.write_text("".join(lines))
+
+
+def load_config(root):
+    if not CONFIG_PATH.is_file():
+        return
+    values = {}
+    for raw in CONFIG_PATH.read_text().splitlines():
+        line = raw.strip()
+        if line.startswith("# CONFIG_") and line.endswith(" is not set"):
+            symbol = line[2 : -len(" is not set")]
+            values[symbol] = False
+        elif line.startswith("CONFIG_") and "=" in line:
+            symbol, _, value = line.partition("=")
+            values[symbol] = value.strip() == "y"
+    for menu in _walk_menus(root):
+        symbol = _symbol(menu)
+        if symbol in values:
+            menu.enabled = values[symbol]
 
 
 def _clip_add(win, y, x, text, attr=0):
@@ -219,7 +265,9 @@ class UI:
             self.cursor[-1] = (self.cursor[-1] - 1) % len(items)
         elif key in (curses.KEY_DOWN, ord("j")) and items:
             self.cursor[-1] = (self.cursor[-1] + 1) % len(items)
-        elif key in (curses.KEY_ENTER, ord("\n"), ord(" "), curses.KEY_RIGHT):
+        elif key == ord(" "):
+            self._toggle_item()
+        elif key in (curses.KEY_ENTER, ord("\n"), curses.KEY_RIGHT):
             self._activate_item()
         elif key in (27, curses.KEY_LEFT, curses.KEY_BACKSPACE):
             return self._back()
@@ -267,6 +315,24 @@ class UI:
         elif name == "Save":
             self._save()
         return False
+
+    def _toggle_item(self):
+        item = self._selected_item()
+        if not isinstance(item, Menu):
+            return
+        if item.enabled:
+            self._set_enabled(item, False)
+            return
+        node = item
+        while isinstance(node, Menu) and node.parent is not None:
+            node.enabled = True
+            node = node.parent
+
+    def _set_enabled(self, menu, enabled):
+        menu.enabled = enabled
+        for child in menu.children:
+            if isinstance(child, Menu):
+                self._set_enabled(child, enabled)
 
     def _activate_item(self):
         items = self.current().children
@@ -374,7 +440,8 @@ class UI:
             selected = self.focus == "items" and index == cursor
             attr = self.selected_attr if selected else self.dialog_attr
             if isinstance(item, Menu):
-                text = f" {item.path()}  --->"
+                mark = "[X]" if item.enabled else "[ ]"
+                text = f" {mark} {item.path()}  --->"
             else:
                 text = f"*** {item.text} ***"
                 text = text.center(inner)
@@ -480,11 +547,11 @@ class UI:
         if choice is None:
             return False
         if choice == "Yes":
-            write_config(self.root.title)
+            write_config(self.root)
         return True
 
     def _save(self):
-        write_config(self.root.title)
+        write_config(self.root)
         self._dialog(
             "Save",
             [f"Configuration written to {CONFIG_PATH.name}"],
@@ -495,9 +562,10 @@ class UI:
         item = self._selected_item()
         lines = [
             "Menus follow the kernel source tree.",
-            "Nothing in them can be toggled yet.",
+            "[X] builds that directory. [ ] leaves it out.",
             "",
             "Up/Down     Move",
+            "Space       Toggle [X] (do) / [ ] (don't)",
             "Enter       Open a submenu",
             "Esc/Left    Go back, or exit from the top",
             "Tab         Move to the buttons",
@@ -658,6 +726,7 @@ def main():
     os.environ.setdefault("ESCDELAY", "25")
     try:
         root = load_kconfig(ROOT / "Kconfig")
+        load_config(root)
     except KconfigError as exc:
         sys.stderr.write(f"menuconfig: {exc}\n")
         return 1

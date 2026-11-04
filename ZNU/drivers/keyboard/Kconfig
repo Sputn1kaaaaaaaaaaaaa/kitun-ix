@@ -1,0 +1,6 @@
+menu "keyboard"
+
+comment "PS/2 keyboard driver"
+comment "This driver provides a minimal scancode interface for future input handling."
+
+endmenu

@@ -4,6 +4,9 @@
 
 #include "../include/framebuffer.h"
 #include "../include/limine.h"
+#ifdef CONFIG_DRIVERS_KEYBOARD
+#include "keyboard.h"
+#endif
 
 // tell Limine which protocol revision we support
 __attribute__((used, section(".limine_requests")))
@@ -59,34 +62,32 @@ void kernel_main(void) {
         halt_forever();
     }
 
-    // initialize ZNU's framebuffer
+    // initialize ZNU's framebuffer and console
     framebuffer_init(
         (uint64_t)(uintptr_t)fb->address,
         fb->width,
         fb->height,
         fb->pitch
     );
+    console_init();
+    console_set_colors(0xFFFFFFFFu, 0x00000000u);
+    printk("ZNU booted\n");
+    printk("framebuffer: %ux%u\n", fb->width, fb->height);
+    printk("hello from printk()!\n");
 
-    // calculate colors from the framebuffer mask
-    uint32_t red =
-        ((1u << fb->red_mask_size) - 1u) << fb->red_mask_shift;
-    uint32_t green =
-        ((1u << fb->green_mask_size) - 1u) << fb->green_mask_shift;
+#ifdef CONFIG_DRIVERS_KEYBOARD
+    keyboard_init();
 
-    // draw a red square to confirm the kernel reached the framebuffer path
-    for (int y = 100; y < 150; y++) {
-        for (int x = 100; x < 150; x++) {
-            put_pixel(x, y, red);
+    for (;;) {
+        int ch = keyboard_getchar();
+        if (ch < 0) {
+            __asm__ volatile ("pause");
+            continue;
         }
+        console_putc((char)ch);
     }
-
-    // draw a green square to show the kernel is alive and the VM is displaying output
-    for (int y = 180; y < 230; y++) {
-        for (int x = 180; x < 230; x++) {
-            put_pixel(x, y, green);
-        }
-    }
-
-    // keep the kernel running after drawing
+#else
+    printk("keyboard driver disabled\n");
     halt_forever();
+#endif
 }
