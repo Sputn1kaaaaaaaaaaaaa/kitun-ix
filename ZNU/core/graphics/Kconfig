@@ -1,0 +1,5 @@
+menu "graphics"
+
+comment "No options in this menu yet"
+
+endmenu

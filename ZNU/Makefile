@@ -1,15 +1,55 @@
 CC = gcc
-CFLAGS = -std=gnu11 -ffreestanding -Wall -Wextra -Iinclude
+LD = ld
+QEMU ?= qemu-system-x86_64
+LIMINE_DIR ?= /usr/share/limine
 
-SRCS = core/main.c core/graphics/framebuffer.c
-OBJS = $(SRCS:.c=.o)
+CFLAGS = -m64 -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -Wall -Wextra -Werror -Iinclude
+LDFLAGS = -m elf_x86_64 -nostdlib -static -n -z noexecstack -T linker.ld
 
-.PHONY: all clean
+KERNEL = kernel.elf
+ISO = znu.iso
+ISO_ROOT = iso_root
+OBJS = boot/boot.o core/main.o core/graphics/framebuffer.o
 
-all: $(OBJS)
+.PHONY: all clean iso run menuconfig
 
-%.o: %.c
+all: iso
+
+iso: $(KERNEL)
+	rm -rf $(ISO_ROOT)
+	mkdir -p $(ISO_ROOT)/boot $(ISO_ROOT)/EFI/BOOT
+	cp $(KERNEL) $(ISO_ROOT)/boot/kernel.elf
+	cp boot/limine.conf $(ISO_ROOT)/boot/limine.conf
+	cp $(LIMINE_DIR)/limine-bios.sys $(ISO_ROOT)/boot/limine-bios.sys
+	cp $(LIMINE_DIR)/limine-bios-cd.bin $(ISO_ROOT)/boot/limine-bios-cd.bin
+	cp $(LIMINE_DIR)/limine-uefi-cd.bin $(ISO_ROOT)/boot/limine-uefi-cd.bin
+	cp $(LIMINE_DIR)/BOOTX64.EFI $(ISO_ROOT)/EFI/BOOT/BOOTX64.EFI
+	xorriso -as mkisofs -R -r -J \
+		-b boot/limine-bios-cd.bin \
+		-no-emul-boot -boot-load-size 4 -boot-info-table -hfsplus \
+		-apm-block-size 2048 --efi-boot boot/limine-uefi-cd.bin \
+		-efi-boot-part --efi-boot-image --protective-msdos-label \
+		$(ISO_ROOT) -o $(ISO)
+	limine bios-install $(ISO)
+
+run: iso
+	$(QEMU) -m 2G -cdrom $(ISO) -vga std -display gtk
+
+menuconfig:
+	python3 scripts/menuconfig.py
+
+$(KERNEL): $(OBJS) linker.ld
+	$(LD) $(LDFLAGS) -o $@ $(OBJS)
+
+boot/boot.o: boot/boot.asm
+	$(CC) -x assembler-with-cpp -c $< -o $@
+
+core/main.o: core/main.c include/framebuffer.h include/limine.h
+	$(CC) $(CFLAGS) -c $< -o $@
+
+core/graphics/framebuffer.o: core/graphics/framebuffer.c include/framebuffer.h
 	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
-	rm -f $(OBJS)
+	rm -f $(OBJS) $(KERNEL) $(ISO)
+	rm -rf $(ISO_ROOT)

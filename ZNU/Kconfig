@@ -1,0 +1,5 @@
+mainmenu "ZNU Kernel Configuration"
+
+source "boot/Kconfig"
+source "core/Kconfig"
+source "drivers/Kconfig"

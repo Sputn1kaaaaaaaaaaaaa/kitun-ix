@@ -1,0 +1,7 @@
+menu "core"
+
+source "core/graphics/Kconfig"
+
+comment "No options in this menu yet"
+
+endmenu
